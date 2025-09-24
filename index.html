@@ -30,11 +30,11 @@
     }
     .title{font-weight:700; letter-spacing:.2px}
     .controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
-    .btn, .select{
+    .btn{
       appearance:none; border:1px solid var(--border); background:#fff; color:var(--fg);
       padding:8px 10px; border-radius:10px; font-size:14px; cursor:pointer;
     }
-    .btn:hover, .select:hover{border-color:#cbd5e1}
+    .btn:hover{border-color:#cbd5e1}
     .grid{
       display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:12px;
     }
@@ -45,16 +45,12 @@
     .name{font-weight:600; font-size:16px; margin-bottom:4px}
     .tz{color:var(--muted); font-size:12px; margin-bottom:10px}
     .time{font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; font-weight:700; font-size:22px}
-    .date{color:var(--muted); font-size:12px; margin-top:6px}
-    .badge{display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#065f46; background:#d1fae5; border:1px solid #a7f3d0; border-radius:999px; padding:3px 8px}
-    .row{display:flex; align-items:center; justify-content:space-between; gap:8px}
     .footer{color:var(--muted); font-size:11px; text-align:center; margin-top:10px}
     .hidden{display:none}
     @media (prefers-color-scheme: dark){ /* in case your Notion page uses dark embeds */
       :root{ --bg:#0b1220; --fg:#f1f5f9; --muted:#94a3b8; --card:#0f172a; --border:#1e293b; }
-      .btn, .select{background:#0f172a; color:var(--fg); border-color:var(--border)}
+      .btn{background:#0f172a; color:var(--fg); border-color:var(--border)}
       .card{background:#0b1220}
-      .badge{color:#052e1a;}
     }
   </style>
 </head>
@@ -63,12 +59,6 @@
     <div class="header">
       <div class="title" id="title">Team Timezones</div>
       <div class="controls">
-        <label class="hidden" for="sort">Sort</label>
-        <select id="sort" class="select" title="Sort">
-          <option value="name">Sort: Name</option>
-          <option value="offset">Sort: UTC Offset</option>
-          <option value="local">Sort: Proximity to Me</option>
-        </select>
         <button id="toggleFmt" class="btn" title="Toggle 12/24-hour">12‑hour</button>
         <button id="refresh" class="btn" title="Reload team list">Reload</button>
       </div>
@@ -80,32 +70,13 @@
 
   <template id="cardTemplate">
     <div class="card" role="listitem">
-      <div class="row">
-        <div class="name"></div>
-        <div class="badge localBadge hidden">You</div>
-      </div>
+      <div class="name"></div>
       <div class="tz"></div>
       <div class="time" aria-live="polite"></div>
-      <div class="date"></div>
     </div>
   </template>
 
   <script>
-    /**
-     * Team Timezones Widget
-     * ---------------------
-     * How it loads team members (in order of precedence):
-     * 1) URL params: multiple t=Name|IANA/Zone (e.g., ?t=Krista|America/Detroit&t=Omar|Europe/Paris)
-     * 2) URL param: team=<JSON-encoded-array> (URL-encode it!)
-     * 3) team.json file in the same folder: [{"name":"Krista","tz":"America/Detroit"}, ...]
-     * 4) Built-in demo list.
-     *
-     * Optional URL params:
-     *   title=(string)        — widget title
-     *   fmt=12|24             — default hour format
-     *   sort=name|offset|local— initial sort mode
-     */
-
     const $ = (sel, root=document) => root.querySelector(sel);
     const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
@@ -113,19 +84,16 @@
     const elFooter = $('#footer');
     const elTitle = $('#title');
     const elToggleFmt = $('#toggleFmt');
-    const elSort = $('#sort');
 
     const params = new URLSearchParams(location.search);
-    const initialFmt = (params.get('fmt')||'12') === '24' ? 24 : 12;
-    const initialSort = params.get('sort') || 'name';
+    const initialFmt = 12; // Always start with 12-hour format
     const titleParam = params.get('title');
     if (titleParam) elTitle.textContent = titleParam;
 
-    let fmt24 = initialFmt === 24; // state
+    let fmt24 = false; // default to 12-hour clock
     let team = [];
 
     const demoTeam = [
-      { name: 'You', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' },
       { name: 'Krista', tz: 'America/Detroit' },
       { name: 'Omar', tz: 'Europe/Paris' },
       { name: 'Yuki', tz: 'Asia/Tokyo' },
@@ -175,105 +143,11 @@
       }
     }
 
-    function fmtDate(d, tz){
-      try {
-        const dateStr = new Intl.DateTimeFormat(undefined, {weekday:'short', month:'short', day:'numeric', timeZone:tz}).format(d);
-        const here = new Date();
-        const thereYMD = ymd(d, tz);
-        const hereYMD = ymd(here, Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-        const rel = relativeDay(thereYMD, hereYMD);
-        return rel ? `${dateStr} • ${rel}` : dateStr;
-      } catch(e){
-        return '';
-      }
-    }
-
-    function ymd(date, tz){
-      // Returns {y,m,day} for a given tz by formatting parts
-      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(date);
-      const m = objFromParts(parts);
-      return { y: +m.year, m: +m.month, d: +m.day };
-    }
-
-    function objFromParts(parts){
-      const o={}; parts.forEach(p=>o[p.type]=p.value); return o;
-    }
-
-    function relativeDay(a, b){
-      // a relative to b; both are {y,m,d}
-      const da = Date.UTC(a.y, a.m-1, a.d);
-      const db = Date.UTC(b.y, b.m-1, b.d);
-      const diff = Math.round((da - db)/86400000);
-      if (diff === -1) return 'Yesterday';
-      if (diff === 0) return 'Today';
-      if (diff === 1) return 'Tomorrow';
-      return null;
-    }
-
-    function offsetMins(tz){
-      // Get offset in minutes from UTC for tz at now
-      const now = new Date();
-      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }).formatToParts(now);
-      const m = objFromParts(parts);
-      // Build a Date in that tz by parsing parts as if they were UTC, then compute diff
-      const tzDate = Date.UTC(+m.year, +m.month - 1, +m.day, +m.hour, +m.minute);
-      const diffMins = Math.round((tzDate - now.getTime())/60000);
-      return diffMins; // positive means tz ahead of local UTC? used only for ordering
-    }
-
-    function offsetFromUTCMinutes(tz){
-      try{
-        const now = new Date();
-        const hereUTCMinutes = now.getUTCMinutes();
-        const tzParts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12:false, hour:'2-digit', minute:'2-digit' }).formatToParts(now);
-        const o = objFromParts(tzParts);
-        const tzHM = (+o.hour)*60 + (+o.minute);
-        const utcHM = now.getUTCHours()*60 + hereUTCMinutes;
-        let diff = tzHM - utcHM;
-        // Normalize to [-720, +720]
-        if (diff > 720) diff -= 1440; else if (diff < -720) diff += 1440;
-        return diff;
-      }catch(e){ return 0; }
-    }
-
-    function meTz(){ return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
-
-    function isMe(member){
-      return eqIANA(member.tz, meTz());
-    }
-
-    function eqIANA(a,b){ return (a||'').toLowerCase() === (b||'').toLowerCase(); }
-
-    function render(list){
-      elGrid.innerHTML = '';
-      const tpl = $('#cardTemplate');
-      list.forEach(m => {
-        const node = tpl.content.firstElementChild.cloneNode(true);
-        $('.name', node).textContent = m.name || m.tz || 'Unknown';
-        $('.tz', node).textContent = m.tz || '—';
-        if (isMe(m)) $('.localBadge', node).classList.remove('hidden');
-        node.dataset.tz = m.tz;
-        elGrid.appendChild(node);
-      });
-      tick();
-    }
-
-    function sortList(mode, list){
-      if (mode === 'name') return list.slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-      if (mode === 'offset') return list.slice().sort((a,b)=> offsetFromUTCMinutes(a.tz) - offsetFromUTCMinutes(b.tz));
-      if (mode === 'local'){
-        const myOff = offsetFromUTCMinutes(meTz());
-        return list.slice().sort((a,b)=> Math.abs(offsetFromUTCMinutes(a.tz)-myOff) - Math.abs(offsetFromUTCMinutes(b.tz)-myOff));
-      }
-      return list;
-    }
-
     function tick(){
       const now = new Date();
       $$('.card').forEach(card => {
         const tz = card.dataset.tz;
         $('.time', card).textContent = fmtTime(now, tz);
-        $('.date', card).textContent = fmtDate(now, tz);
       });
     }
 
@@ -284,41 +158,45 @@
     }
 
     function updateFooter(){
-      const me = meTz();
+      const me = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const now = new Date();
       const utc = new Intl.DateTimeFormat(undefined, {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:!fmt24, timeZone:'UTC'}).format(now);
       elFooter.textContent = `Your timezone: ${me} • UTC: ${utc}`;
     }
 
-    // Controls
     elToggleFmt.addEventListener('click', ()=>{
       fmt24 = !fmt24;
       elToggleFmt.textContent = fmt24 ? '24‑hour' : '12‑hour';
       tick(); updateFooter();
     });
 
-    elSort.addEventListener('change', ()=>{
-      const mode = elSort.value;
-      const sorted = sortList(mode, team);
-      render(sorted);
-    });
-
     $('#refresh').addEventListener('click', async ()=>{
       team = await loadTeam();
       team = team.filter(x=>x && x.tz);
       team = team.map(x=>({name:x.name||'', tz:x.tz}));
-      render(sortList(elSort.value, team));
+      render(team);
       updateFooter();
     });
 
-    // Init
+    function render(list){
+      elGrid.innerHTML = '';
+      const tpl = $('#cardTemplate');
+      list.forEach(m => {
+        const node = tpl.content.firstElementChild.cloneNode(true);
+        $('.name', node).textContent = m.name || m.tz || 'Unknown';
+        $('.tz', node).textContent = m.tz || '—';
+        node.dataset.tz = m.tz;
+        elGrid.appendChild(node);
+      });
+      tick();
+    }
+
     (async function init(){
-      if (initialSort) elSort.value = initialSort;
       if (fmt24) elToggleFmt.textContent = '24‑hour';
       team = await loadTeam();
       team = team.filter(x=>x && x.tz);
       if (!team.length) team = demoTeam;
-      render(sortList(elSort.value, team));
+      render(team);
       startClock();
       updateFooter();
     })();
