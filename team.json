@@ -1,7 +1,7 @@
 [
-  {"name": "You",   "tz": "America/Detroit"},
-  {"name": "Krista","tz": "America/Detroit"},
-  {"name": "Omar",  "tz": "Europe/Paris"},
-  {"name": "Yuki",  "tz": "Asia/Tokyo"},
-  {"name": "Priya", "tz": "Asia/Kolkata"}
+  {"name": "Krista","tz": "America/Chicago"},
+  {"name": "Stephanie",   "tz": "America/Detroit"},
+  {"name": "Hannah",  "tz": "America/Denver"},
+  {"name": "Liz",  "tz": "America/Miami"},
+  {"name": "Luke", "tz": "America/New_York"}
 ]
